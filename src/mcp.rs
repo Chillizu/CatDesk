@@ -27,7 +27,7 @@ const SERVER_VERSION: &str = "4.0.0";
 pub(crate) const MODERN_MCP_PROTOCOL_VERSION: &str = "2026-07-28";
 const SERVER_INFO_META_KEY: &str = "io.modelcontextprotocol/serverInfo";
 const UI_TEMPLATE_URI: &str = "ui://widget/catdesk-dashboard.html";
-const WIDGET_RESOURCE_REVISION: u32 = 3;
+const WIDGET_RESOURCE_REVISION: u32 = 4;
 const UI_TEMPLATE_MIME_TYPE: &str = "text/html;profile=mcp-app";
 pub(crate) const WIDGET_PAYLOAD_META_KEY: &str = "catdesk/widgetPayload";
 const CATDESK_WIDGET_HTML: &str = include_str!("widget/catdesk_dashboard.html");
@@ -6381,7 +6381,7 @@ hello world"
     #[test]
     fn widget_resource_uri_includes_revision_for_cache_busting() {
         let uri = current_widget_resource_uri_for_tool("catdesk_instruction");
-        assert!(uri.contains("widgetRevision=3"));
+        assert!(uri.contains("widgetRevision=4"));
         assert!(uri.contains("toolName=catdesk_instruction"));
     }
 
