@@ -1,3 +1,4 @@
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -48,7 +49,7 @@ pub fn create_handoff(workspace_root: &str, input: &HandoffInput) -> Result<Hand
     let (workspace_name, workspace_id) = workspace_identity(workspace_root)?;
     let filename =
         format!("{HANDOFF_FILE_PREFIX}{workspace_name}_{workspace_id}{HANDOFF_FILE_SUFFIX}");
-    let search_prefix = format!("{HANDOFF_FILE_PREFIX}{workspace_name}_");
+    let search_prefix = format!("{HANDOFF_FILE_PREFIX}{workspace_name}_{workspace_id}");
     let git = collect_git_context(workspace_root);
     let generated_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -79,8 +80,10 @@ pub(crate) fn handoff_filename(workspace_root: &str) -> Result<String, String> {
 }
 
 pub(crate) fn handoff_search_prefix(workspace_root: &str) -> Result<String, String> {
-    let (workspace_name, _) = workspace_identity(workspace_root)?;
-    Ok(format!("{HANDOFF_FILE_PREFIX}{workspace_name}_"))
+    let (workspace_name, workspace_id) = workspace_identity(workspace_root)?;
+    Ok(format!(
+        "{HANDOFF_FILE_PREFIX}{workspace_name}_{workspace_id}"
+    ))
 }
 
 fn workspace_identity(workspace_root: &str) -> Result<(String, String), String> {
@@ -153,24 +156,9 @@ fn collect_git_context(workspace_root: &str) -> GitContext {
             .map(|value| format!("detached@{}", value.trim()))
     });
 
-    let status_output = git_output(
-        workspace_root,
-        &["status", "--short", "--untracked-files=all", "--", "."],
-    );
+    let status_output = git_status_output(workspace_root);
     let status_available = status_output.is_some();
-    let mut status = status_output
-        .map(|value| {
-            value
-                .lines()
-                .map(str::to_string)
-                .take(MAX_GIT_STATUS_LINES + 1)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    if status.len() > MAX_GIT_STATUS_LINES {
-        status.truncate(MAX_GIT_STATUS_LINES);
-        status.push(format!("… truncated after {MAX_GIT_STATUS_LINES} lines"));
-    }
+    let status = status_output.unwrap_or_default();
 
     let recent_commits = git_output(
         workspace_root,
@@ -194,19 +182,78 @@ fn collect_git_context(workspace_root: &str) -> GitContext {
     }
 }
 
-fn git_output(workspace_root: &str, args: &[&str]) -> Option<String> {
-    let output = ProcessCommand::new("git")
+fn git_command(workspace_root: &str) -> ProcessCommand {
+    let mut command = ProcessCommand::new("git");
+    command
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .arg("-c")
+        .arg("core.fsmonitor=false")
+        .arg("-c")
+        .arg("core.quotePath=true")
         .arg("-C")
         .arg(workspace_root)
-        .args(args)
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
+        .stderr(Stdio::null());
+    command
+}
+
+fn git_output(workspace_root: &str, args: &[&str]) -> Option<String> {
+    let output = git_command(workspace_root).args(args).output().ok()?;
     output
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn git_status_output(workspace_root: &str) -> Option<Vec<String>> {
+    let mut child = git_command(workspace_root)
+        .args(["status", "--short", "--untracked-files=all", "--", "."])
+        .stdout(Stdio::piped())
+        .spawn()
+        .ok()?;
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    };
+    let mut reader = BufReader::new(stdout);
+    let mut status = Vec::with_capacity(MAX_GIT_STATUS_LINES + 1);
+    let mut line = String::new();
+    let mut truncated = false;
+
+    loop {
+        line.clear();
+        let bytes_read = match reader.read_line(&mut line) {
+            Ok(value) => value,
+            Err(_) => {
+                drop(reader);
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        };
+        if bytes_read == 0 {
+            break;
+        }
+        while line.ends_with('\n') || line.ends_with('\r') {
+            line.pop();
+        }
+        if status.len() == MAX_GIT_STATUS_LINES {
+            truncated = true;
+            break;
+        }
+        status.push(line.clone());
+    }
+
+    drop(reader);
+    if truncated {
+        let _ = child.kill();
+        let _ = child.wait();
+        status.push(format!("… truncated after {MAX_GIT_STATUS_LINES} lines"));
+        Some(status)
+    } else {
+        child.wait().ok()?.success().then_some(status)
+    }
 }
 
 fn render_handoff(
@@ -388,6 +435,10 @@ mod tests {
                 .search_prefix
                 .starts_with("catdesk_handoff_catdesk-handoff-library-")
         );
+        assert_eq!(
+            output.filename,
+            format!("{}{}", output.search_prefix, HANDOFF_FILE_SUFFIX)
+        );
         assert!(output.content.contains("Continue in a new session"));
         assert_eq!(output.bytes, output.content.len());
         assert!(!root.join(".catdesk").exists());
@@ -420,8 +471,11 @@ mod tests {
         let second_prefix =
             handoff_search_prefix(&second.to_string_lossy()).expect("second prefix");
 
-        assert_eq!(first_prefix, "catdesk_handoff_project_");
-        assert_eq!(second_prefix, first_prefix);
+        assert!(first_prefix.starts_with("catdesk_handoff_project_"));
+        assert!(second_prefix.starts_with("catdesk_handoff_project_"));
+        assert_ne!(first_prefix, second_prefix);
+        assert_eq!(first_name, format!("{first_prefix}{HANDOFF_FILE_SUFFIX}"));
+        assert_eq!(second_name, format!("{second_prefix}{HANDOFF_FILE_SUFFIX}"));
         assert_ne!(first_name, second_name);
 
         let _ = fs::remove_dir_all(parent);
@@ -438,7 +492,8 @@ mod tests {
             handoff_search_prefix(&project.to_string_lossy()).expect("unicode prefix");
 
         assert!(filename.starts_with("catdesk_handoff_測試專案_"));
-        assert_eq!(search_prefix, "catdesk_handoff_測試專案_");
+        assert!(search_prefix.starts_with("catdesk_handoff_測試專案_"));
+        assert_eq!(filename, format!("{search_prefix}{HANDOFF_FILE_SUFFIX}"));
 
         let _ = fs::remove_dir_all(parent);
     }
@@ -476,6 +531,101 @@ mod tests {
         assert_eq!(git.branch.as_deref(), Some("handoff-test"));
         assert!(git.status.iter().any(|line| line.contains("notes.txt")));
         assert!(git.recent_commits.is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn git_status_is_bounded_while_being_read() {
+        if !ProcessCommand::new("git")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+        {
+            return;
+        }
+
+        let root = workspace("git-status-limit");
+        ProcessCommand::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["init", "-q"])
+            .status()
+            .expect("run git init");
+        for index in 0..(MAX_GIT_STATUS_LINES + 20) {
+            fs::write(root.join(format!("file-{index:03}.txt")), "untracked\n")
+                .expect("write untracked file");
+        }
+
+        let git = collect_git_context(&root.to_string_lossy());
+        assert!(git.available);
+        assert!(git.status_available);
+        assert_eq!(git.status.len(), MAX_GIT_STATUS_LINES + 1);
+        assert_eq!(
+            git.status.last().map(String::as_str),
+            Some("… truncated after 80 lines")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn git_context_does_not_run_fsmonitor_or_refresh_index() {
+        use std::os::unix::fs::PermissionsExt;
+
+        if !ProcessCommand::new("git")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+        {
+            return;
+        }
+
+        let root = workspace("git-read-only");
+        ProcessCommand::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["init", "-q"])
+            .status()
+            .expect("run git init");
+        fs::write(root.join("tracked.txt"), "tracked\n").expect("write tracked file");
+        ProcessCommand::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["add", "tracked.txt"])
+            .status()
+            .expect("git add");
+
+        let hook = root.join("fsmonitor-hook.sh");
+        fs::write(
+            &hook,
+            "#!/bin/sh\ntouch \"$(dirname \"$0\")/fsmonitor-ran\"\nexit 0\n",
+        )
+        .expect("write fsmonitor hook");
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755))
+            .expect("make fsmonitor hook executable");
+        let hook_string = hook.to_string_lossy().into_owned();
+        ProcessCommand::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["config", "core.fsmonitor", hook_string.as_str()])
+            .status()
+            .expect("configure fsmonitor");
+
+        let index_path = root.join(".git/index");
+        let index_before = fs::read(&index_path).expect("read index before handoff");
+        let git = collect_git_context(&root.to_string_lossy());
+        let index_after = fs::read(&index_path).expect("read index after handoff");
+
+        assert!(git.available);
+        assert!(git.status_available);
+        assert_eq!(index_before, index_after);
+        assert!(!root.join("fsmonitor-ran").exists());
 
         let _ = fs::remove_dir_all(root);
     }
