@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::io;
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, FileTypeExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -33,6 +33,35 @@ fn insert_env_path(paths: &mut BTreeSet<PathBuf>, variable: &str) {
     if let Some(path) = std::env::var_os(variable) {
         insert_existing(paths, PathBuf::from(path));
     }
+}
+
+fn insert_ssh_read_paths(paths: &mut BTreeSet<PathBuf>, home: &Path) {
+    let ssh_dir = home.join(".ssh");
+    for name in ["config", "known_hosts", "known_hosts2"] {
+        insert_existing(paths, ssh_dir.join(name));
+    }
+    if let Ok(entries) = std::fs::read_dir(&ssh_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|extension| extension == "pub") {
+                insert_existing(paths, path);
+            }
+        }
+    }
+}
+
+fn existing_unix_socket(path: &Path) -> Option<PathBuf> {
+    let canonical = path.canonicalize().ok()?;
+    std::fs::metadata(&canonical)
+        .ok()?
+        .file_type()
+        .is_socket()
+        .then_some(canonical)
+}
+
+fn ssh_agent_socket() -> Option<PathBuf> {
+    let path = PathBuf::from(std::env::var_os("SSH_AUTH_SOCK")?);
+    existing_unix_socket(&path)
 }
 
 fn runtime_read_paths() -> BTreeSet<PathBuf> {
@@ -71,7 +100,7 @@ fn runtime_read_paths() -> BTreeSet<PathBuf> {
         // inaccessible.
         insert_existing(&mut paths, home.join(".gitconfig"));
         insert_existing(&mut paths, home.join(".config/git/config"));
-        insert_existing(&mut paths, home.join(".ssh/known_hosts"));
+        insert_ssh_read_paths(&mut paths, &home);
     }
 
     paths
@@ -156,6 +185,20 @@ fn bubblewrap_command(
         bwrap_command.arg("--ro-bind-try").arg(&path).arg(&path);
     }
 
+    // Root-owned SSH client config appears as uid 65534 inside the unprivileged
+    // user namespace, which OpenSSH rejects before authentication. Hide the
+    // system config and let OpenSSH use the read-only user config/defaults.
+    if Path::new("/etc/ssh").is_dir() {
+        bwrap_command.arg("--tmpfs").arg("/etc/ssh");
+    }
+
+    let ssh_agent_socket = ssh_agent_socket();
+    if let Some(socket) = &ssh_agent_socket {
+        // Forward only the agent socket. Private key files remain outside the
+        // sandbox while Git/SSH can authenticate and perform SSH signing.
+        bwrap_command.arg("--bind").arg(socket).arg(socket);
+    }
+
     // Replicate merged-/usr symlinks. runtime_read_paths canonicalises, so on
     // distributions where /bin, /sbin, /lib and /lib64 are symlinks into /usr
     // it yields only the /usr targets. Bubblewrap builds a fresh namespace:
@@ -172,9 +215,14 @@ fn bubblewrap_command(
         bwrap_command.arg("--bind").arg(path).arg(path);
     }
 
+    bwrap_command.arg("--chdir").arg(&cwd);
+    if let Some(socket) = &ssh_agent_socket {
+        bwrap_command
+            .arg("--setenv")
+            .arg("SSH_AUTH_SOCK")
+            .arg(socket);
+    }
     bwrap_command
-        .arg("--chdir")
-        .arg(&cwd)
         .arg("--setenv")
         .arg("TMPDIR")
         .arg(&scratch)
@@ -263,6 +311,48 @@ mod tests {
     }
 
     #[test]
+    fn ssh_read_paths_include_config_known_hosts_and_public_keys_only() {
+        let tree = TempTree::new();
+        let ssh_dir = tree.path().join(".ssh");
+        std::fs::create_dir_all(&ssh_dir).expect("create .ssh");
+        let config = ssh_dir.join("config");
+        let known_hosts = ssh_dir.join("known_hosts");
+        let public_key = ssh_dir.join("id_ed25519.pub");
+        let private_key = ssh_dir.join("id_ed25519");
+        for path in [&config, &known_hosts, &public_key, &private_key] {
+            std::fs::write(path, b"test\n").expect("write ssh fixture");
+        }
+
+        let mut paths = BTreeSet::new();
+        insert_ssh_read_paths(&mut paths, tree.path());
+
+        assert!(paths.contains(&config.canonicalize().expect("canonical config")));
+        assert!(paths.contains(&known_hosts.canonicalize().expect("canonical known_hosts")));
+        assert!(paths.contains(&public_key.canonicalize().expect("canonical public key")));
+        assert!(!paths.contains(&private_key.canonicalize().expect("canonical private key")));
+    }
+
+    #[test]
+    fn existing_unix_socket_accepts_socket_and_rejects_regular_file() {
+        use std::os::unix::net::UnixListener;
+
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let socket = PathBuf::from(format!("/tmp/cd-{}.sock", &suffix[..8]));
+        let regular = PathBuf::from(format!("/tmp/cd-{}.file", &suffix[..8]));
+        let _listener = UnixListener::bind(&socket).expect("bind unix socket");
+        std::fs::write(&regular, b"not a socket").expect("write regular file");
+
+        assert_eq!(
+            existing_unix_socket(&socket),
+            Some(socket.canonicalize().expect("canonical socket"))
+        );
+        assert_eq!(existing_unix_socket(&regular), None);
+
+        let _ = std::fs::remove_file(&socket);
+        let _ = std::fs::remove_file(&regular);
+    }
+
+    #[test]
     fn runtime_read_paths_do_not_grant_the_home_directory_itself() {
         let Some(home) = std::env::var_os("HOME") else {
             return;
@@ -313,6 +403,12 @@ mod tests {
         let args: Vec<_> = command.get_args().map(|arg| arg.to_os_string()).collect();
 
         assert!(args.iter().any(|arg| arg.as_os_str() == "--new-session"));
+        if Path::new("/etc/ssh").is_dir() {
+            assert!(args.windows(2).any(|pair| {
+                pair[0].as_os_str() == OsStr::new("--tmpfs")
+                    && pair[1].as_os_str() == OsStr::new("/etc/ssh")
+            }));
+        }
         let chdir = args
             .windows(2)
             .find(|pair| pair[0].as_os_str() == OsStr::new("--chdir"))
