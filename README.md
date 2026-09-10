@@ -228,7 +228,7 @@ According to [the blog](<https://help.openai.com/en/articles/11909943-gpt-53-and
 
 # FAQ
 
-### Can the red CSP button be turned off?
+## Can the red CSP button be turned off?
 
 <table align="center">
   <tr>
@@ -245,7 +245,7 @@ According to [the blog](<https://help.openai.com/en/articles/11909943-gpt-53-and
 
 Yes. Open [Advanced connector settings](https://chatgpt.com/#settings/Connectors/Advanced) and turn on `Enforce CSP in developer mode`. That setting removes the red button. CatDesk automatically adds the current ngrok domain to the widget CSP, so the widget should keep working with CSP enforcement enabled.
 
-### Already connected. Why does it ask to connect again and again?
+## Already connected. Why does it ask to connect again and again?
 
 There doesn't seem to be any obvious pattern for when the connector triggers `Connect`. We're sure it's not triggered by the tool call count, but we don't know the exact reason.
 
@@ -264,13 +264,13 @@ There doesn't seem to be any obvious pattern for when the connector triggers `Co
 
 Looks like it was a bug, and they fixed it 🥳.
 
-### Can CatDesk be used in other apps?
+## Can CatDesk be used in other apps?
 
 Yes, in theory. CatDesk may also work with other apps that support custom remote MCP servers, including Claude. (We don't think anyone will use CatDesk with Claude though, since Claude Chat mode and Claude Code share the same usage limits.)
 
 However, CatDesk is built specifically for ChatGPT Chat and its Custom Connector (They renamed it to _Apps_, and now they renamed it again and call it _Plugins_, but to prevent confusion with _Application_, we still prefer to call it _Connector_) flow. ChatGPT Chat is the environment CatDesk is designed and tested for, so other apps may not work as smoothly.
 
-### How does the input/output token be calculated?
+## How does the input/output token be calculated?
 
 CatDesk does not get official token usage numbers from ChatGPT Web. It estimates them locally with `o200k_base`, the same tokenizer family used by GPT-5.5-style models, so the numbers are useful, but still only estimates.
 
@@ -288,7 +288,7 @@ CatDesk does not count:
 
 The loading animation is only a visual effect. ChatGPT Web does not stream partial MCP tool input/output into CatDesk, so the widget animates locally first and then locks to the estimated values when the real tool result arrives.
 
-### What is workspace?
+## What is workspace?
 
 Workspace is the root directory CatDesk is allowed to work in.
 
@@ -296,7 +296,7 @@ By default, it is the directory where you launch CatDesk. You can also override 
 
 File tools use this directory as their base path, and paths outside the workspace are rejected.
 
-### Where should AGENTS.md go?
+## Where should AGENTS.md go?
 
 You can put it in 3 places.
 
@@ -311,7 +311,7 @@ CatDesk checks these locations for `AGENTS.md` in this order. This happens every
   <em>Set AGENTS.md manually</em>
 </p>
 
-### What to do if the widget is blank?
+## What to do if the widget is blank?
 
 <p align="center">
   <img src="docs/images/blank_widget.png" alt="Empty widget/function call" width="500"><br>
