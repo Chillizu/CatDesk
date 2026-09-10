@@ -47,6 +47,7 @@ use tokio::sync::{
     Mutex,
     mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
 };
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const FLOW_ROW_CELLS: usize = FLOW_ANIM_CELLS;
 const FLOW_LANE_LEFT_LABEL: &str = "Your computer ";
@@ -251,14 +252,36 @@ fn flow_lane_spans(
     spans
 }
 
-fn trim_line(text: &str, max_chars: usize) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    if chars.len() <= max_chars {
+fn terminal_cell_width(text: &str) -> usize {
+    UnicodeWidthStr::width(text)
+}
+
+fn pad_right_to_cell_width(text: &str, width: usize) -> String {
+    format!(
+        "{text}{}",
+        " ".repeat(width.saturating_sub(terminal_cell_width(text)))
+    )
+}
+
+fn trim_line(text: &str, max_cells: usize) -> String {
+    if terminal_cell_width(text) <= max_cells {
         return text.to_string();
     }
-    let kept = chars[..max_chars.saturating_sub(3)]
-        .iter()
-        .collect::<String>();
+    if max_cells <= 3 {
+        return ".".repeat(max_cells);
+    }
+
+    let target_width = max_cells - 3;
+    let mut kept = String::new();
+    let mut width = 0usize;
+    for ch in text.chars() {
+        let ch_width = ch.width().unwrap_or(0);
+        if width.saturating_add(ch_width) > target_width {
+            break;
+        }
+        kept.push(ch);
+        width = width.saturating_add(ch_width);
+    }
     format!("{kept}...")
 }
 
@@ -360,6 +383,31 @@ fn mask_secret_log_message(message: &str, revealed: bool) -> String {
     mask_mcp_path_in_log(message, false)
 }
 
+fn localize_runtime_value(value: &str) -> String {
+    match value {
+        "Computer" => "電腦".into(),
+        "Browser" => "瀏覽器".into(),
+        "Both" => "兩者".into(),
+        "multi-tools" => "多工具".into(),
+        "read-only" => "唯讀".into(),
+        "Disable" => "停用".into(),
+        "Expanded" => "展開".into(),
+        "Collapsed" => "收合".into(),
+        "enabled" => "已啟用".into(),
+        "disabled" => "已停用".into(),
+        "not active" => "未啟用".into(),
+        "concise" => "簡潔".into(),
+        "neon" => "霓虹".into(),
+        _ => value
+            .replace("launch new browser instance", "啟動新的瀏覽器執行個體")
+            .replace("Chromium (supported)", "Chromium（支援）")
+            .replace(
+                "Not supported yet (CDP bridge for Firefox not wired)",
+                "尚未支援（Firefox 的 CDP bridge 尚未接上）",
+            ),
+    }
+}
+
 fn localize_log_message(message: &str, ui_language: UiLanguage) -> String {
     if !ui_language.is_traditional_chinese() {
         return message.to_string();
@@ -371,33 +419,140 @@ fn localize_log_message(message: &str, ui_language: UiLanguage) -> String {
         "No browser currently runs with remote debugging" => {
             "目前沒有瀏覽器以遠端除錯模式執行".into()
         }
+        "No browser was selected before startup" => "啟動前未選取瀏覽器".into(),
+        "Browser mode requires selecting a supported Chromium browser" => {
+            "瀏覽器模式需要選取受支援的 Chromium 瀏覽器".into()
+        }
+        "No available local port in range 9222-9322 for remote debugging" => {
+            "9222-9322 範圍內沒有可用的本機遠端除錯連接埠".into()
+        }
+        "Starting chrome-devtools-mcp..." => "正在啟動 chrome-devtools-mcp...".into(),
+        "chrome-devtools-mcp started" => "chrome-devtools-mcp 已啟動".into(),
+        "ChatGPT connector refresh acknowledged" => "已確認重新整理 ChatGPT Connector".into(),
         "ngrok SDK tunnel started" => "ngrok SDK 隧道已啟動".into(),
+        "ngrok tunnel exited" => "ngrok 隧道已結束".into(),
         "Generated new random MCP slug" => "已產生新的隨機 MCP slug".into(),
         "Updated ngrok static domain" => "已更新 ngrok 固定網域".into(),
         "Token billing totals reset" => "已重設 Token 計費總計".into(),
+        "DELETE mcp endpoint: stateless reset" => "DELETE mcp endpoint：無狀態重設".into(),
         _ => {
-            for (prefix, localized_prefix) in [
-                ("MCP Server started on port ", "MCP 伺服器已啟動，連接埠 "),
-                ("MCP Server URL: ", "MCP 伺服器 URL："),
+            for (prefix, localized_prefix, localize_value) in [
+                (
+                    "MCP Server started on port ",
+                    "MCP 伺服器已啟動，連接埠 ",
+                    false,
+                ),
+                ("MCP Server URL: ", "MCP 伺服器 URL：", false),
+                ("ngrok URL: ", "ngrok URL：", false),
                 (
                     "Auto-saved ngrok static domain: ",
                     "已自動儲存 ngrok 固定網域：",
+                    false,
                 ),
-                ("Selected browser: ", "選取的瀏覽器："),
+                (
+                    "Saved ngrok authtoken to ",
+                    "已儲存 ngrok authtoken 至 ",
+                    false,
+                ),
+                ("Saved ngrok domain to ", "已儲存 ngrok 網域至 ", false),
+                ("Selected browser: ", "選取的瀏覽器：", false),
                 (
                     "Selected browser remote debugging: ",
                     "選取瀏覽器的遠端除錯：",
+                    true,
                 ),
-                ("UI language: ", "介面語言："),
-                ("Theme changed to ", "主題已切換為 "),
-                ("Tool mode: ", "工具模式："),
-                ("Widget detail mode: ", "Widget 詳細模式："),
+                ("UI language: ", "介面語言：", true),
+                ("Mode: ", "模式：", true),
+                ("Theme changed to ", "主題已切換為 ", true),
+                ("Tool mode: ", "工具模式：", true),
+                ("Widget detail mode: ", "Widget 詳細模式：", true),
+                (
+                    "Set CatDesk as co-author: ",
+                    "將 CatDesk 設為共同作者：",
+                    true,
+                ),
+                ("Local browsers: ", "本機瀏覽器：", false),
+                ("Remote debugging supported: ", "支援遠端除錯：", false),
+                ("Remote debugging active: ", "已啟用遠端除錯：", false),
+                ("Using browser: ", "使用瀏覽器：", true),
+                (
+                    "Failed to create user data dir ",
+                    "無法建立使用者資料目錄 ",
+                    false,
+                ),
+                ("Failed to bind port ", "無法綁定連接埠 ", false),
+                ("Exported logs to ", "紀錄已匯出至 ", false),
+                ("Failed to export logs: ", "紀錄匯出失敗：", false),
+                (
+                    "Failed to persist app state: ",
+                    "無法儲存應用程式狀態：",
+                    false,
+                ),
+                ("ngrok tunnel failed: ", "ngrok 隧道失敗：", false),
+                (
+                    "ngrok tunnel join failed: ",
+                    "ngrok 隧道結束等待失敗：",
+                    false,
+                ),
+                ("chrome-devtools-mcp: ", "chrome-devtools-mcp：", false),
+                ("ngrok: ", "ngrok：", false),
             ] {
                 if let Some(rest) = message.strip_prefix(prefix) {
+                    let rest = if localize_value {
+                        localize_runtime_value(rest)
+                    } else {
+                        rest.to_string()
+                    };
                     return format!("{localized_prefix}{rest}");
                 }
             }
-            message.to_string()
+
+            if let Some(rest) = message.strip_prefix("Selected browser ")
+                && let Some(browser) =
+                    rest.strip_suffix(" is not supported yet for chrome-devtools-mcp")
+            {
+                return format!("選取的瀏覽器 {browser} 尚未支援 chrome-devtools-mcp");
+            }
+            if let Some(rest) = message.strip_prefix("Failed to launch ")
+                && let Some((browser, error)) = rest.split_once(" with remote debugging: ")
+            {
+                return format!("無法以遠端除錯模式啟動 {browser}：{error}");
+            }
+            if let Some(rest) = message.strip_prefix("Launched ")
+                && let Some((browser, target)) = rest.split_once(" with remote debugging on ")
+            {
+                return format!("已以遠端除錯模式啟動 {browser}，位置 {target}");
+            }
+            if let Some(rest) = message.strip_prefix("Remote debugging ready for ")
+                && let Some((browser, target)) = rest.split_once(" at ")
+            {
+                return format!("{browser} 的遠端除錯已就緒，位置 {target}");
+            }
+            if let Some(rest) = message.strip_prefix("Remote debugging endpoint for ")
+                && let Some(browser) = rest.strip_suffix(" did not become ready in time")
+            {
+                return format!("{browser} 的遠端除錯端點未能及時就緒");
+            }
+            if let Some(rest) = message.strip_prefix("Browser: ") {
+                return format!(
+                    "瀏覽器：{}",
+                    localize_runtime_value(rest)
+                        .replace(" (binary: ", "（執行檔：")
+                        .replace(", path: ", "，路徑：")
+                        .replace(", support: ", "，支援：")
+                        .replace(", remote debug flag: ", "，遠端除錯參數：")
+                        .replace(", remote debug active: ", "，遠端除錯啟用：")
+                        .replace(", pid: ", "，PID：")
+                );
+            }
+
+            message
+                .replace("parse error", "解析錯誤")
+                .replace("invalid request", "無效請求")
+                .replace("invalid-request", "無效請求")
+                .replace("validation-error", "驗證錯誤")
+                .replace("non-request JSON-RPC", "非請求 JSON-RPC")
+                .replace("stateless reset", "無狀態重設")
         }
     }
 }
@@ -421,12 +576,25 @@ fn wrap_log_message(message: &str, width: usize) -> Vec<String> {
         let chars = logical_line.chars().collect::<Vec<_>>();
         let mut start = 0usize;
         while start < chars.len() {
-            let remaining = chars.len() - start;
-            if remaining <= width {
+            let mut end = start;
+            let mut used_width = 0usize;
+            while end < chars.len() {
+                let ch_width = chars[end].width().unwrap_or(0);
+                if used_width.saturating_add(ch_width) > width {
+                    break;
+                }
+                used_width = used_width.saturating_add(ch_width);
+                end += 1;
+            }
+
+            if end == chars.len() {
                 wrapped.push(chars[start..].iter().collect());
                 break;
             }
-            let end = start + width;
+            if end == start {
+                end += 1;
+            }
+
             let split = if chars.get(end).is_some_and(|ch| ch.is_whitespace()) {
                 end
             } else {
@@ -579,13 +747,21 @@ fn usage_line(
     ])
 }
 
-fn flow_call_offset(text: &str) -> String {
-    let text_width = text.chars().count();
-    let centered_in_lane = FLOW_ROW_CELLS.saturating_sub(text_width) / 2;
-    " ".repeat(FLOW_LANE_LEFT_LABEL.len() + centered_in_lane)
+fn flow_lane_left_label(ui_language: UiLanguage) -> &'static str {
+    ui_language.text(FLOW_LANE_LEFT_LABEL, "你的電腦 ")
 }
 
-fn flow_turn_usage_line(flow: &FlowLane, palette: &theme::Palette) -> Line<'static> {
+fn flow_call_offset(text: &str, left_label: &str) -> String {
+    let text_width = terminal_cell_width(text);
+    let centered_in_lane = FLOW_ROW_CELLS.saturating_sub(text_width) / 2;
+    " ".repeat(terminal_cell_width(left_label) + centered_in_lane)
+}
+
+fn flow_turn_usage_line(
+    flow: &FlowLane,
+    palette: &theme::Palette,
+    ui_language: UiLanguage,
+) -> Line<'static> {
     let label_style = Style::default().fg(palette.muted_fg);
     let value_style = Style::default()
         .fg(palette.secondary_fg)
@@ -600,7 +776,10 @@ fn flow_turn_usage_line(flow: &FlowLane, palette: &theme::Palette) -> Line<'stat
             let output = format_token_compact(usage.tool_output_tokens);
             let cost = format_usd_compact(estimate_gpt_5_6_and_earlier_usage_cost_usd(usage));
             let usage_text = format!("↓{input}  ↑{output}  ${cost}");
-            let indent = format!("    {}", flow_call_offset(&usage_text));
+            let indent = format!(
+                "    {}",
+                flow_call_offset(&usage_text, flow_lane_left_label(ui_language))
+            );
             Line::from(vec![
                 Span::raw(indent),
                 Span::styled("↓", label_style),
@@ -615,7 +794,10 @@ fn flow_turn_usage_line(flow: &FlowLane, palette: &theme::Palette) -> Line<'stat
         }
         None => {
             let usage_text = "↓--  ↑--  $--";
-            let indent = format!("    {}", flow_call_offset(usage_text));
+            let indent = format!(
+                "    {}",
+                flow_call_offset(usage_text, flow_lane_left_label(ui_language))
+            );
             Line::from(vec![
                 Span::raw(indent),
                 Span::styled(usage_text, label_style),
@@ -804,7 +986,7 @@ fn flow_phase_lines(
                 phase.title
             )
         })
-        .map(|title| title.chars().count())
+        .map(|title| terminal_cell_width(&title))
         .max()
         .unwrap_or(0);
     let status_width = phases
@@ -812,7 +994,7 @@ fn flow_phase_lines(
         .flat_map(|phase| {
             std::iter::once("✓".to_string())
                 .chain(phase.steps.iter().map(|step| step.label.clone()))
-                .map(|status| format!("[{status}]").chars().count())
+                .map(|status| terminal_cell_width(&format!("[{status}]")))
         })
         .max()
         .unwrap_or(0);
@@ -835,11 +1017,11 @@ fn flow_phase_lines(
                 phase_index + 1,
                 phase.title
             );
-            let title_padding = title_width.saturating_sub(title.chars().count());
+            let title_padding = title_width.saturating_sub(terminal_cell_width(&title));
             let status_text = flow_phase_status_label(phase)
                 .map(|label| format!("[{label}]"))
                 .unwrap_or_default();
-            let status_padding = status_width.saturating_sub(status_text.chars().count());
+            let status_padding = status_width.saturating_sub(terminal_cell_width(&status_text));
             let mut spans = vec![
                 Span::styled(title, label_style),
                 Span::styled(" ".repeat(title_padding + TITLE_STATUS_GAP), future_style),
@@ -934,7 +1116,7 @@ fn flow_bootstrap_status_lines(
         ui_language.text("Connector bootstrap in progress", "Connector 初始化進行中")
     };
     let call_text = trim_line(&action_label, FLOW_ROW_CELLS);
-    let call_offset = flow_call_offset(&call_text);
+    let call_offset = flow_call_offset(&call_text, flow_lane_left_label(ui_language));
 
     let mut lines = vec![
         Line::from(Span::styled(
@@ -970,7 +1152,7 @@ fn flow_bootstrap_status_lines(
                 })
                 .add_modifier(Modifier::BOLD);
             let mut row = vec![Span::styled(
-                format!("  {}", ui_language.text(FLOW_LANE_LEFT_LABEL, "你的電腦 ")),
+                format!("  {}", flow_lane_left_label(ui_language)),
                 computer_role_style,
             )];
             row.extend(flow_lane_spans(true, Some(flow), palette, now_millis));
@@ -1815,7 +1997,7 @@ fn draw_tui_header(f: &mut Frame, area: Rect, palette: &theme::Palette, title: &
     f.render_widget(block, area);
 
     let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
-    let version_width = version.chars().count() as u16;
+    let version_width = terminal_cell_width(&version) as u16;
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(version_width)])
@@ -1866,7 +2048,11 @@ fn draw_mode_select(
     );
 
     let settings_detail = if zh {
-        format!(" (主題 {}, 工具模式 {})", theme.label, tool_mode.label())
+        format!(
+            " (主題 {}, 工具模式 {})",
+            theme.label_for(true),
+            tool_mode.label_for(ui_language)
+        )
     } else {
         format!(" (theme {}, tool mode {})", theme.label, tool_mode.label())
     };
@@ -2625,7 +2811,9 @@ fn render_toast(f: &mut Frame, palette: theme::Palette, msg: &str, pos: (u16, u1
     let area = f.area();
     let (col, row) = pos;
     let label = format!(" {msg} ");
-    let w = label.len() as u16;
+    let w = u16::try_from(terminal_cell_width(&label))
+        .unwrap_or(u16::MAX)
+        .min(area.width);
     let x = col.saturating_add(1).min(area.width.saturating_sub(w));
     let y = if row > 0 { row - 1 } else { row + 1 }.min(area.height.saturating_sub(1));
     let toast_area = Rect::new(x, y, w, 1);
@@ -2642,9 +2830,10 @@ fn render_toast(f: &mut Frame, palette: theme::Palette, msg: &str, pos: (u16, u1
 mod tests {
     use super::state::{AppState, ToolMode, UiLanguage};
     use super::{
-        LogView, draw_chatgpt_connector_refresh_notice, draw_mode_select, draw_tui_header, draw_ui,
-        export_logs_to_dir, key_is_clipboard_paste, mask_mcp_path_in_log,
-        normalize_ngrok_authtoken_input, parse_terminal_profile_choice, text_input_key_is_cancel,
+        LogView, draw_chatgpt_connector_refresh_notice, draw_mode_select, draw_settings,
+        draw_tui_header, draw_ui, export_logs_to_dir, key_is_clipboard_paste, localize_log_message,
+        mask_mcp_path_in_log, normalize_ngrok_authtoken_input, pad_right_to_cell_width,
+        parse_terminal_profile_choice, terminal_cell_width, text_input_key_is_cancel, trim_line,
         wrap_log_message,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -2697,7 +2886,46 @@ mod tests {
         assert!(chinese_compact.contains("控制電腦"));
         assert!(chinese_compact.contains("控制瀏覽器"));
         assert!(chinese_compact.contains("語言：繁體中文"));
+        assert!(chinese_compact.contains("主題簡潔"));
+        assert!(chinese_compact.contains("工具模式多工具"));
         assert!(chinese_compact.contains("離開"));
+    }
+
+    #[test]
+    fn settings_renders_traditional_chinese_theme_names_and_descriptions() {
+        let theme = super::theme::all()[0];
+        let mut terminal = Terminal::new(TestBackend::new(140, 50)).expect("create terminal");
+        terminal
+            .draw(|frame| {
+                draw_settings(
+                    frame,
+                    &theme,
+                    ToolMode::MultiTools,
+                    super::ShowDetailMode::Expanded,
+                    UiLanguage::TraditionalChinese,
+                    false,
+                    "test-slug",
+                    None,
+                    &super::UsageTotals::default(),
+                    0,
+                    false,
+                )
+            })
+            .expect("draw traditional chinese settings");
+
+        let text = terminal_buffer_text(&terminal).replace(' ', "");
+        for expected in [
+            "選擇主題",
+            "簡潔",
+            "黑／灰／白的極簡介面，減少色彩使用。",
+            "霓虹",
+            "賽博龐克粉紅點綴與霓虹高亮。",
+        ] {
+            assert!(
+                text.contains(expected),
+                "missing translated theme text: {expected}"
+            );
+        }
     }
 
     #[test]
@@ -2864,6 +3092,69 @@ mod tests {
 
         let hard_wrapped = wrap_log_message("abcdefghijkl", 5);
         assert_eq!(hard_wrapped, vec!["abcde", "fghij", "kl"]);
+
+        let cjk_wrapped = wrap_log_message("中文測試", 6);
+        assert_eq!(cjk_wrapped, vec!["中文測", "試"]);
+        assert!(
+            cjk_wrapped
+                .iter()
+                .all(|line| terminal_cell_width(line) <= 6)
+        );
+    }
+
+    #[test]
+    fn display_width_helpers_use_terminal_cells_for_cjk_text() {
+        assert_eq!(terminal_cell_width("abc"), 3);
+        assert_eq!(terminal_cell_width("繁中"), 4);
+        assert_eq!(terminal_cell_width(" 已複製！ "), 10);
+
+        let padded = pad_right_to_cell_width("繁中", 6);
+        assert_eq!(terminal_cell_width(&padded), 6);
+        assert_eq!(padded, "繁中  ");
+
+        let trimmed = trim_line("繁體中文測試", 7);
+        assert_eq!(trimmed, "繁體...");
+        assert_eq!(terminal_cell_width(&trimmed), 7);
+    }
+
+    #[test]
+    fn traditional_chinese_runtime_logs_translate_operator_facing_messages() {
+        let zh = UiLanguage::TraditionalChinese;
+        for (english, expected) in [
+            ("Mode: Both", "模式：兩者"),
+            ("Theme changed to neon", "主題已切換為 霓虹"),
+            ("Tool mode: read-only", "工具模式：唯讀"),
+            ("Widget detail mode: Expanded", "Widget 詳細模式：展開"),
+            (
+                "Set CatDesk as co-author: enabled",
+                "將 CatDesk 設為共同作者：已啟用",
+            ),
+            (
+                "Saved ngrok domain to /tmp/config.toml",
+                "已儲存 ngrok 網域至 /tmp/config.toml",
+            ),
+            ("Local browsers: Google Chrome", "本機瀏覽器：Google Chrome"),
+            (
+                "Using browser: Google Chrome (/Applications/Google Chrome.app) -> launch new browser instance",
+                "使用瀏覽器：Google Chrome (/Applications/Google Chrome.app) -> 啟動新的瀏覽器執行個體",
+            ),
+            (
+                "Failed to launch Google Chrome with remote debugging: denied",
+                "無法以遠端除錯模式啟動 Google Chrome：denied",
+            ),
+            ("ngrok tunnel exited", "ngrok 隧道已結束"),
+            (
+                "← JSON-RPC parse error bytes=12 message=bad",
+                "← JSON-RPC 解析錯誤 bytes=12 message=bad",
+            ),
+        ] {
+            assert_eq!(localize_log_message(english, zh), expected, "{english}");
+        }
+
+        assert_eq!(
+            localize_log_message("Mode: Both", UiLanguage::English),
+            "Mode: Both"
+        );
     }
 
     #[test]
@@ -3374,7 +3665,12 @@ fn draw_settings(
             selected_line_idx = lines.len();
         }
         let mut spans = vec![Span::styled(
-            format!(" {} [{}] {}", marker, idx + 1, theme.label),
+            format!(
+                " {} [{}] {}",
+                marker,
+                idx + 1,
+                theme.label_for(ui_language.is_traditional_chinese())
+            ),
             name_style,
         )];
         if theme.id == current_theme.id {
@@ -3387,7 +3683,10 @@ fn draw_settings(
         }
         lines.push(Line::from(spans));
         lines.push(Line::from(vec![Span::styled(
-            format!("     {}", theme.description),
+            format!(
+                "     {}",
+                theme.description_for(ui_language.is_traditional_chinese())
+            ),
             Style::default().fg(palette.muted_fg),
         )]));
     }
@@ -5008,7 +5307,7 @@ fn draw_ui(
         .add_modifier(Modifier::BOLD);
     let status_label = |label: &'static str| -> Span<'static> {
         Span::styled(
-            format!("  {label:<width$} ", width = STATUS_LABEL_WIDTH),
+            format!("  {} ", pad_right_to_cell_width(label, STATUS_LABEL_WIDTH)),
             status_label_style,
         )
     };
@@ -5218,7 +5517,7 @@ fn draw_ui(
             } else {
                 ui_language.text("awaiting connection", "等待連線")
             };
-            let call_offset = flow_call_offset(call_text);
+            let call_offset = flow_call_offset(call_text, flow_lane_left_label(ui_language));
             status_lines.push(Line::from(vec![
                 Span::styled("    ", Style::default().fg(palette.muted_fg)),
                 Span::styled(call_offset, Style::default().fg(palette.muted_fg)),
@@ -5227,10 +5526,7 @@ fn draw_ui(
             let lane = lane_for(false, None);
             let mut row = vec![
                 Span::styled("    ", Style::default().fg(palette.muted_fg)),
-                Span::styled(
-                    ui_language.text(FLOW_LANE_LEFT_LABEL, "你的電腦 "),
-                    computer_role_style,
-                ),
+                Span::styled(flow_lane_left_label(ui_language), computer_role_style),
             ];
             row.extend(lane);
             row.push(Span::styled("ChatGPT Web", chatgpt_role_style));
@@ -5246,7 +5542,7 @@ fn draw_ui(
             {
                 let latest_action = latest_flow_action(flow);
                 let call_text = trim_line(&latest_action, FLOW_ROW_CELLS);
-                let call_offset = flow_call_offset(&call_text);
+                let call_offset = flow_call_offset(&call_text, flow_lane_left_label(ui_language));
                 status_lines.push(Line::from(vec![
                     Span::styled("    ", Style::default().fg(palette.muted_fg)),
                     Span::styled(call_offset, Style::default().fg(palette.muted_fg)),
@@ -5259,17 +5555,14 @@ fn draw_ui(
                 let lane = lane_for(lane_active, Some(flow));
                 let mut row = vec![
                     Span::styled("    ", Style::default().fg(palette.muted_fg)),
-                    Span::styled(
-                        ui_language.text(FLOW_LANE_LEFT_LABEL, "你的電腦 "),
-                        computer_role_style,
-                    ),
+                    Span::styled(flow_lane_left_label(ui_language), computer_role_style),
                 ];
                 row.extend(lane);
                 row.push(Span::styled("ChatGPT Web", chatgpt_role_style));
                 row.push(Span::styled("  ", Style::default().fg(palette.muted_fg)));
                 row.extend(request_stats_for(app));
                 status_lines.push(Line::from(row));
-                status_lines.push(flow_turn_usage_line(flow, &palette));
+                status_lines.push(flow_turn_usage_line(flow, &palette, ui_language));
             }
         }
     }
