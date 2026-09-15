@@ -20,8 +20,8 @@ use crate::devtools::DevtoolsBridge;
 use crate::mcp::{self, JsonRpcRequest, WIDGET_PAYLOAD_META_KEY};
 use crate::state::{
     AgentsPathMode, FlowBootstrapWidget, FlowDirection, ServerUiEvent, SharedState, ShowDetailMode,
-    TokenStatsLayout, UsageTotals, parse_seed_hex, save_agents_path_mode, save_show_detail_mode,
-    save_token_stats_layout,
+    TokenStatsLayout, UsageTotals, parse_seed_hex, save_agents_path_mode,
+    save_show_detail_mode, save_token_stats_layout,
 };
 
 const STATELESS_FLOW_ID: &str = "stateless";
@@ -977,6 +977,7 @@ fn parse_show_detail_mode(value: &str) -> Option<ShowDetailMode> {
     }
 }
 
+
 async fn post_agents_path_mode(
     State(s): State<ServerState>,
     Form(form): Form<HashMap<String, String>>,
@@ -1117,6 +1118,7 @@ async fn sync_show_detail_mode_state(s: &ServerState, mode: ShowDetailMode) {
     app.show_detail_mode = mode;
 }
 
+
 async fn options_agents_path_mode(State(_s): State<ServerState>) -> Response<Body> {
     with_widget_action_cors(Response::builder())
         .status(StatusCode::NO_CONTENT)
@@ -1137,6 +1139,7 @@ async fn options_show_detail_mode(State(_s): State<ServerState>) -> Response<Bod
         .body(Body::empty())
         .unwrap()
 }
+
 
 async fn get_agents_path_state(State(s): State<ServerState>) -> Response<Body> {
     let workspace_root = {
@@ -1186,6 +1189,7 @@ fn agents_state_response(workspace_root: &str) -> Response<Body> {
 async fn post_binagotchy_partner(
     State(s): State<ServerState>,
     Form(form): Form<HashMap<String, String>>,
+
 ) -> Response<Body> {
     let Some(seed) = form
         .get("seed")

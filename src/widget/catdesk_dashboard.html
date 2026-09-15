@@ -28,6 +28,7 @@
         --chip: #f1f1f1;
         --code: #f7f7f8;
         --surface-shadow: rgba(0, 0, 0, 0.035);
+        --corner-radius: 12px;
         --diff-nav-gradient-start: rgba(247, 247, 248, 0.99);
         --diff-nav-gradient-mid: rgba(247, 247, 248, 0.94);
         --diff-nav-background: rgba(255, 255, 255, 0.92);
@@ -104,7 +105,7 @@
       .root {
         display: grid;
         gap: 6px;
-        border-radius: 12px;
+        border-radius: var(--corner-radius);
         background: transparent;
         padding: 0;
       }
@@ -149,7 +150,7 @@
 
       .section {
         border: 1px solid var(--line);
-        border-radius: 12px;
+        border-radius: var(--corner-radius);
         background: var(--panel);
         box-shadow: 0 1px 2px var(--surface-shadow);
         overflow: hidden;
@@ -1581,7 +1582,7 @@
         width: min(100%, 900px);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 8px;
-        background: linear-gradient(180deg, #353332 0%, #2f2d2c 100%);
+        background: var(--panel-2);
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
         overflow: hidden;
       }
@@ -1695,7 +1696,7 @@
         padding: 8px;
         border: 1px solid var(--line);
         border-radius: 8px;
-        background: #242323;
+        background: var(--code);
         overflow: hidden;
       }
 
@@ -1715,7 +1716,7 @@
         padding: 0;
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 7px;
-        background: rgba(26, 25, 25, 0.92);
+        background: var(--panel-2);
         color: var(--text-2);
         cursor: pointer;
         text-decoration: none;
@@ -1746,7 +1747,7 @@
         padding: 5px 7px;
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 7px;
-        background: rgba(26, 25, 25, 0.96);
+        background: var(--panel-2);
         color: var(--text-2);
         font-size: 10px;
         line-height: 1.2;
@@ -1810,7 +1811,7 @@
         padding: 16px;
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 12px;
-        background: linear-gradient(180deg, #353332 0%, #2f2d2c 100%);
+        background: var(--panel-2);
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
       }
 
@@ -1835,7 +1836,7 @@
         padding: 8px 10px;
         border: 1px solid var(--line);
         border-radius: 8px;
-        background: #242323;
+        background: var(--code);
         color: var(--text-2);
         font:
           11px/1.45 "SFMono-Regular",
@@ -1987,7 +1988,7 @@
             rgba(2, 133, 255, 0.16),
             transparent 42%
           ),
-          linear-gradient(180deg, #1f252c 0%, #1b1f24 100%);
+          linear-gradient(180deg, var(--panel-2) 0%, var(--panel) 100%);
         padding: 18px 12px 12px;
       }
 
@@ -2140,8 +2141,8 @@
         width: calc(var(--instruction-sz) * 24);
         height: calc(var(--instruction-sz) * 2.5);
         margin-top: calc(var(--instruction-sz) * -1);
-        background: #2d3436;
-        box-shadow: 0 calc(var(--instruction-sz) * 1) 0 #1a1e1f;
+        background: var(--bg);
+        box-shadow: 0 calc(var(--instruction-sz) * 1) 0 var(--line);
         position: relative;
         z-index: 2;
         animation: instruction-table-impact 0.4s 0.6s ease-out forwards;
@@ -2164,7 +2165,7 @@
         top: 100%;
         width: calc(var(--instruction-sz) * 2);
         height: calc(var(--instruction-sz) * 7);
-        background: #2d3436;
+        background: var(--panel-2);
         transform-origin: top center;
         animation: instruction-leg-impact 0.4s 0.6s forwards;
       }
@@ -2440,7 +2441,7 @@
 
       .completion-shell {
         position: relative;
-        border-radius: 12px;
+        border-radius: var(--corner-radius);
         padding: 0;
         overflow: hidden;
         isolation: isolate;
@@ -2525,7 +2526,7 @@
 
       .token-side {
         border: 1px solid var(--line);
-        border-radius: 12px;
+        border-radius: var(--corner-radius);
         background: var(--panel);
         padding: 8px 10px;
         box-shadow: 0 1px 2px var(--surface-shadow);
@@ -2591,6 +2592,11 @@
 
       .files-token-row.token-layout-bottom .main-stack > .section:last-child {
         border-bottom: 0;
+        border-radius: var(--corner-radius) var(--corner-radius) 0 0;
+      }
+
+      .files-token-row.token-layout-bottom .token-side {
+        border-radius: 0 0 var(--corner-radius) var(--corner-radius);
       }
 
       .token-side-footer {
@@ -2599,7 +2605,7 @@
         min-width: 0;
         border-top: 0;
         margin-top: 0;
-        border-radius: 0 0 12px 12px;
+        border-radius: 0 0 var(--corner-radius) var(--corner-radius);
         box-shadow: none;
       }
 
@@ -2967,6 +2973,26 @@
         var WIDGET_PAYLOAD_META_KEY = "catdesk/widgetPayload";
         var TOKEN_STATS_LAYOUT_STORAGE_KEY = "catdesk.tokenStatsLayout";
         var tokenStatsLayoutSetting = initialTokenStatsLayout();
+        var CORNER_RADIUS_DEFAULT = "12px";
+
+        function applyWidgetCornerStyle(style) {
+          document.documentElement.style.setProperty(
+            "--corner-radius",
+            style === "square" ? "0" : CORNER_RADIUS_DEFAULT,
+          );
+        }
+
+        function widgetCornerStyleFromQuery() {
+          try {
+            return new URLSearchParams(window.location.search).get(
+              "widgetCornerStyle",
+            );
+          } catch (_error) {
+            return null;
+          }
+        }
+
+        applyWidgetCornerStyle(widgetCornerStyleFromQuery());
 
         function esc(value) {
           return String(value)
@@ -4880,7 +4906,7 @@
             current.mascotFrames[0] ||
             "";
           var heroStyle = current.mascotSpiritHeroBackground
-            ? " style=\"background:#141b25 url('" +
+            ? " style=\"background:var(--panel-2) url('" +
               esc(current.mascotSpiritHeroBackground) +
               "') center / cover no-repeat;\""
             : "";
@@ -7957,6 +7983,11 @@
             return true;
           }
           setTokenStatsLayoutSetting(nextView.tokenStatsLayout);
+          var widgetCornerStyle = readOptionalStringField(
+            widgetPayload,
+            "widgetCornerStyle",
+          );
+          if (widgetCornerStyle) applyWidgetCornerStyle(widgetCornerStyle);
           view = nextView;
           render();
           return true;
