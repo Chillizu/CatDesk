@@ -36,7 +36,7 @@ use state::{
     AppState, FLOW_ANIM_CELLS, FlowAnimKind, FlowAnimSegment, FlowDirection, FlowLane,
     GPT_5_6_AND_EARLIER_USAGE_BUCKET, LogEntry, Mode, ServerUiEvent, SharedState, ShowDetailMode,
     ToolMode, UiLanguage, UsageTotals, app_config_path, flow_anim_lit_count,
-    load_macos_terminal_profile, load_ngrok_authtoken, load_ngrok_domain,
+    load_macos_terminal_profile, load_ngrok_authtoken, load_ngrok_domain, local_now,
     save_macos_terminal_profile, save_ngrok_authtoken, save_ngrok_domain, user_home_dir,
 };
 use std::collections::HashMap;
@@ -623,6 +623,28 @@ fn wrap_log_message(message: &str, width: usize) -> Vec<String> {
     wrapped
 }
 
+fn format_log_export_filename(now: time::OffsetDateTime) -> std::io::Result<String> {
+    let stamp = now
+        .format(time::macros::format_description!(
+            "[year][month][day]-[hour][minute][second]"
+        ))
+        .map_err(std::io::Error::other)?;
+    let offset_seconds = now.offset().whole_seconds();
+    let offset_suffix = if offset_seconds == 0 {
+        "Z".to_string()
+    } else {
+        let sign = if offset_seconds < 0 { '-' } else { '+' };
+        let absolute = offset_seconds.unsigned_abs();
+        let hours = absolute / 3600;
+        let minutes = (absolute % 3600) / 60;
+        format!("{sign}{hours:02}{minutes:02}")
+    };
+    Ok(format!(
+        "catdesk-{stamp}-{:03}{offset_suffix}.log",
+        now.millisecond()
+    ))
+}
+
 fn export_logs_to_dir(
     logs: &[LogEntry],
     directory: &std::path::Path,
@@ -634,13 +656,8 @@ fn export_logs_to_dir(
         std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700))?;
     }
 
-    let now = time::OffsetDateTime::now_utc();
-    let stamp = now
-        .format(time::macros::format_description!(
-            "[year][month][day]-[hour][minute][second]"
-        ))
-        .map_err(std::io::Error::other)?;
-    let path = directory.join(format!("catdesk-{stamp}-{:03}Z.log", now.millisecond()));
+    let now = local_now();
+    let path = directory.join(format_log_export_filename(now)?);
     let mut file = std::fs::File::create(&path)?;
     for entry in logs {
         let message = mask_secret_log_message(&entry.message, false);
@@ -3154,6 +3171,21 @@ mod tests {
         assert_eq!(
             localize_log_message("Mode: Both", UiLanguage::English),
             "Mode: Both"
+        );
+    }
+
+    #[test]
+    fn exported_log_filename_includes_utc_offset() {
+        let utc = time::OffsetDateTime::from_unix_timestamp(0).expect("unix epoch");
+        assert_eq!(
+            super::format_log_export_filename(utc).expect("format UTC filename"),
+            "catdesk-19700101-000000-000Z.log"
+        );
+
+        let seoul = utc.to_offset(time::UtcOffset::from_hms(9, 0, 0).expect("UTC+09"));
+        assert_eq!(
+            super::format_log_export_filename(seoul).expect("format local filename"),
+            "catdesk-19700101-090000-000+0900.log"
         );
     }
 

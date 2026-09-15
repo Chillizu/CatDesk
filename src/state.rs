@@ -5,6 +5,7 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
+use time::{OffsetDateTime, UtcOffset};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -732,15 +733,18 @@ pub(crate) fn parse_seed_hex(seed: &str) -> std::io::Result<u64> {
     })
 }
 
+pub(crate) fn local_now() -> OffsetDateTime {
+    let now = OffsetDateTime::now_utc();
+    let offset = UtcOffset::local_offset_at(now).unwrap_or(UtcOffset::UTC);
+    now.to_offset(offset)
+}
+
+fn format_hms(now: OffsetDateTime) -> String {
+    format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second())
+}
+
 fn now_hms() -> String {
-    let secs = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let h = (secs % 86400) / 3600;
-    let m = (secs % 3600) / 60;
-    let s = secs % 60;
-    format!("{h:02}:{m:02}:{s:02}")
+    format_hms(local_now())
 }
 
 fn now_unix_millis() -> u128 {
@@ -1359,6 +1363,14 @@ mod tests {
         )
         .expect("create app state");
         (app, workspace, config_path)
+    }
+
+    #[test]
+    fn log_time_uses_the_datetime_offset() {
+        let local = OffsetDateTime::from_unix_timestamp(0)
+            .expect("unix epoch")
+            .to_offset(UtcOffset::from_hms(9, 0, 0).expect("UTC+09"));
+        assert_eq!(format_hms(local), "09:00:00");
     }
 
     #[test]
