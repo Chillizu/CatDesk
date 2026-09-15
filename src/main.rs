@@ -3590,50 +3590,51 @@ async fn run_settings(
                                 let corner_start = detail_mode_end;
                                 let corner_end = corner_start + widget_corner_styles.len();
                                 if selected_row < corner_end {
-                                    let picked =
-                                        widget_corner_styles[selected_row - corner_start];
+                                    let picked = widget_corner_styles[selected_row - corner_start];
                                     if current_widget_corner_style != picked {
-                                    match save_widget_corner_style(picked) {
-                                        Ok(_) => {
-                                            current_widget_corner_style = picked;
-                                            app.log(
-                                                "INFO",
-                                                format!(
-                                                    "Widget corner style: {}",
-                                                    picked.label_for(current_ui_language)
-                                                ),
-                                            );
-                                        }
-                                        Err(error) => {
-                                            app.log(
+                                        match save_widget_corner_style(picked) {
+                                            Ok(_) => {
+                                                current_widget_corner_style = picked;
+                                                app.log(
+                                                    "INFO",
+                                                    format!(
+                                                        "Widget corner style: {}",
+                                                        picked.label_for(current_ui_language)
+                                                    ),
+                                                );
+                                            }
+                                            Err(error) => {
+                                                app.log(
                                                 "ERROR",
                                                 format!(
                                                     "Failed to save widget corner style: {error}"
                                                 ),
                                             );
+                                            }
                                         }
-                                    }
-                                } else if selected_row == corner_end {
-                                    app.set_catdesk_as_co_author = !app.set_catdesk_as_co_author;
-                                    let enabled = app.set_catdesk_as_co_author;
-                                    app.log(
-                                        "INFO",
-                                        format!(
-                                            "Set CatDesk as co-author: {}",
-                                            if enabled { "enabled" } else { "disabled" }
-                                        ),
-                                    );
-                                    app.persist_state_with_log();
-                                } else if selected_row == corner_end + 1 {
-                                    // Keep existing slug, do nothing
-                                } else if selected_row == corner_end + 2 {
-                                    app.regenerate_mcp_slug();
-                                    app.log("INFO", "Generated new random MCP slug".into());
-                                    app.persist_state_with_log();
-                                } else if selected_row == corner_end + 3 {
-                                    let current_domain = app.ngrok_domain.clone().unwrap_or_default();
-                                    drop(app);
-                                    if let Some(new_domain) = run_prompt(
+                                    } else if selected_row == corner_end {
+                                        app.set_catdesk_as_co_author =
+                                            !app.set_catdesk_as_co_author;
+                                        let enabled = app.set_catdesk_as_co_author;
+                                        app.log(
+                                            "INFO",
+                                            format!(
+                                                "Set CatDesk as co-author: {}",
+                                                if enabled { "enabled" } else { "disabled" }
+                                            ),
+                                        );
+                                        app.persist_state_with_log();
+                                    } else if selected_row == corner_end + 1 {
+                                        // Keep existing slug, do nothing
+                                    } else if selected_row == corner_end + 2 {
+                                        app.regenerate_mcp_slug();
+                                        app.log("INFO", "Generated new random MCP slug".into());
+                                        app.persist_state_with_log();
+                                    } else if selected_row == corner_end + 3 {
+                                        let current_domain =
+                                            app.ngrok_domain.clone().unwrap_or_default();
+                                        drop(app);
+                                        if let Some(new_domain) = run_prompt(
                                         terminal,
                                         current_ui_language.text(
                                             "Enter ngrok static domain (with/without https://, empty to clear):",
@@ -3655,10 +3656,10 @@ async fn run_settings(
                                         app.log("INFO", "Updated ngrok static domain".into());
                                         app.persist_state_with_log();
                                     }
+                                    }
                                 }
                             }
                         }
-                    }
                     }
                     KeyCode::Char('r') => {
                         if !confirm_reset_token_billing {
