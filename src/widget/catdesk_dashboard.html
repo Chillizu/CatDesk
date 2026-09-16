@@ -29,6 +29,10 @@
         --code: #f7f7f8;
         --surface-shadow: rgba(0, 0, 0, 0.035);
         --corner-radius: 12px;
+        --overlay-background-strong: rgba(255, 255, 255, 0.96);
+        --overlay-background: rgba(255, 255, 255, 0.92);
+        --overlay-weak: rgba(13, 13, 13, 0.05);
+        --overlay-strong-fill: rgba(13, 13, 13, 0.08);
         --diff-nav-gradient-start: rgba(247, 247, 248, 0.99);
         --diff-nav-gradient-mid: rgba(247, 247, 248, 0.94);
         --diff-nav-background: rgba(255, 255, 255, 0.92);
@@ -66,6 +70,10 @@
           --chip: #383838;
           --code: #212121;
           --surface-shadow: rgba(0, 0, 0, 0.18);
+          --overlay-background-strong: rgba(26, 26, 28, 0.96);
+          --overlay-background: var(--overlay-background);
+          --overlay-weak: rgba(255, 255, 255, 0.015);
+          --overlay-strong-fill: var(--overlay-strong-fill);
           --diff-nav-gradient-start: rgba(33, 33, 33, 0.99);
           --diff-nav-gradient-mid: rgba(33, 33, 33, 0.94);
           --diff-nav-background: rgba(42, 42, 44, 0.92);
@@ -1284,9 +1292,9 @@
         min-width: 118px;
         max-width: none;
         padding: 7px 9px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: rgba(26, 26, 28, 0.96);
+        background: var(--overlay-background-strong);
         box-shadow: 0 14px 24px rgba(0, 0, 0, 0.28);
         color: var(--text-2);
         font-size: 11px;
@@ -1310,9 +1318,9 @@
         top: 50%;
         width: 10px;
         height: 10px;
-        border-left: 1px solid rgba(255, 255, 255, 0.1);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        background: rgba(26, 26, 28, 0.96);
+        border-left: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        background: var(--overlay-background-strong);
         transform: translateY(-50%) rotate(45deg);
       }
 
@@ -1362,7 +1370,7 @@
       }
 
       .agents-fan-sector {
-        fill: rgba(33, 33, 33, 0.94);
+        fill: var(--overlay-background-strong);
         stroke: var(--line);
         stroke-width: 1;
         transform-origin: center;
@@ -1415,13 +1423,13 @@
       }
 
       .agents-fan-sector-group.is-disabled .agents-fan-sector {
-        fill: rgba(255, 255, 255, 0.015);
-        stroke: rgba(255, 255, 255, 0.08);
+        fill: var(--overlay-weak);
+        stroke: var(--line);
       }
 
       .agents-fan-sector-group.is-selected .agents-fan-sector {
-        fill: rgba(255, 255, 255, 0.1);
-        stroke: rgba(255, 255, 255, 0.3);
+        fill: var(--overlay-strong-fill);
+        stroke: var(--text-3);
       }
 
       .agents-fan-sector-group.is-selected .agents-fan-icon {
@@ -1456,7 +1464,7 @@
 
       .agents-fan-guide {
         fill: none;
-        stroke: rgba(255, 255, 255, 0.08);
+        stroke: var(--line);
         stroke-width: 1;
         stroke-dasharray: 2 4;
         display: none;
@@ -1580,7 +1588,7 @@
       .binagotchy-modal {
         position: relative;
         width: min(100%, 900px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel-2);
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
@@ -1682,9 +1690,9 @@
       }
 
       .binagotchy-browser-card.is-partner {
-        border-color: rgba(255, 255, 255, 0.28);
-        background: rgba(255, 255, 255, 0.03);
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+        border-color: var(--text-3);
+        background: var(--overlay-weak);
+        box-shadow: 0 0 0 1px var(--line) inset;
       }
 
       .binagotchy-browser-art {
@@ -1714,7 +1722,7 @@
         align-items: center;
         justify-content: center;
         padding: 0;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--line);
         border-radius: 7px;
         background: var(--panel-2);
         color: var(--text-2);
@@ -1735,7 +1743,7 @@
 
       .binagotchy-browser-action.is-active {
         color: var(--text);
-        border-color: rgba(255, 255, 255, 0.28);
+        border-color: var(--text-3);
         background: var(--panel-2);
       }
 
@@ -1745,7 +1753,7 @@
         right: 0;
         bottom: calc(100% + 6px);
         padding: 5px 7px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--line);
         border-radius: 7px;
         background: var(--panel-2);
         color: var(--text-2);
@@ -1809,7 +1817,7 @@
         display: grid;
         gap: 12px;
         padding: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--line);
         border-radius: 12px;
         background: var(--panel-2);
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
@@ -1864,9 +1872,9 @@
         align-items: center;
         justify-content: center;
         padding: 0 12px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: rgba(26, 25, 25, 0.92);
+        background: var(--overlay-background);
         color: var(--text-2);
         font: inherit;
         cursor: pointer;
@@ -1893,7 +1901,7 @@
         display: grid;
         gap: 12px;
         padding: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--line);
         border-radius: 12px;
         background: var(--panel);
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
@@ -1933,9 +1941,9 @@
         align-items: center;
         justify-content: center;
         padding: 0 12px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: rgba(26, 25, 25, 0.92);
+        background: var(--overlay-background);
         color: var(--text-2);
         font: inherit;
         cursor: pointer;
